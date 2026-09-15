@@ -32,6 +32,7 @@ import { mergeRecordOverlay } from "./model-merge.js";
 import { emptyRuntimeSnapshot, type RuntimeSnapshot } from "./runtime.js";
 import { findNativeAdapterByPackage } from "./native-adapters.js";
 import { DEFAULT_PROVIDER_IDS, type ResolvedConfig } from "./config/types.js";
+import { registerAutoContinue } from "./auto-continue.js";
 
 type ModelRecord = Record<string, Record<string, unknown>>;
 
@@ -234,6 +235,7 @@ export const Zmllmgw = Plugin.define({
     let adminBaseURL: string | undefined;
     let providerIDs = providerIDsFor(undefined);
     let activeSnapshot = emptyRuntimeSnapshot();
+    let activeConfig: ResolvedConfig | undefined;
     let projectionSnapshot = activeSnapshot;
     let hasPublishedSnapshot = false;
     let inFlightRefresh: Promise<RefreshSummary> | undefined;
@@ -452,8 +454,11 @@ export const Zmllmgw = Plugin.define({
         // A configuration-source failure has its own policy: explicitly publish
         // the empty runtime, even when a previous configuration was active.
         await syncAdminAuth(undefined);
+        activeConfig = undefined;
         return publish(emptyRuntimeSnapshot(), "config", configState.path);
       }
+
+      activeConfig = config;
 
       const staticSnapshot = snapshotForConfig(config);
       if (!(await syncAdminAuth(config))) {
@@ -528,6 +533,12 @@ export const Zmllmgw = Plugin.define({
       });
     });
 
+    const disposeAutoContinue = await registerAutoContinue({
+      ctx,
+      providerID: () => providerIDs.gateway,
+      config: () => activeConfig,
+    });
+
     await ctx.session.hook("http.request", async (event) => {
       if (event.model.providerID !== providerIDs.gateway) return;
       const snapshot = activeSnapshot;
@@ -599,6 +610,10 @@ export const Zmllmgw = Plugin.define({
     });
 
     await refresh(false);
+
+    return () => {
+      void disposeAutoContinue();
+    };
   },
 });
 

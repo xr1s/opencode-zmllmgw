@@ -14,6 +14,7 @@ import type {
   ConfigSchedule,
   ConfigVariant,
   RawConfig,
+  ConfigAutoContinue,
   RawConfigModel,
   RawConfigProvider,
   ResolvedConfig,
@@ -44,6 +45,14 @@ const CONFIG_CANDIDATES = [
   "config.json",
   "config.jsonc",
 ];
+
+export const DEFAULT_AUTO_CONTINUE_PROMPT = [
+  "上一次回答因输出长度限制被截断。",
+  "请从上一次回答结束的位置继续，不要重复已经输出的内容，继续完成原任务。",
+  "由于存在输出长度限制，如果需要调用工具，请考虑少量多次调用，",
+  "通过多次较短的 tool call 完成同样的任务，避免单次 tool call 过长导致生成失败。",
+].join("\n");
+export const DEFAULT_AUTO_CONTINUE_MAX_ROUNDS = 15;
 
 type RecordValue = Record<string, unknown>;
 
@@ -271,11 +280,35 @@ function parseLimit(
   const input = positiveIntegerField(value, "input", path, filePath);
   const output = positiveIntegerField(value, "output", path, filePath);
   if (context === undefined && input === undefined && output === undefined)
-    invalid(filePath, path, "expected at least one of context, input, or output");
+    invalid(
+      filePath,
+      path,
+      "expected at least one of context, input, or output",
+    );
   return {
     ...(context !== undefined ? { context } : {}),
     ...(input !== undefined ? { input } : {}),
     ...(output !== undefined ? { output } : {}),
+  };
+}
+
+function parseAutoContinue(
+  value: unknown,
+  path: string,
+  filePath: string,
+): ConfigAutoContinue {
+  if (value === undefined) return {};
+  if (!isRecord(value)) invalid(filePath, path, "expected an object");
+  let prompt: string | undefined;
+  if ("prompt" in value) {
+    if (typeof value.prompt !== "string")
+      invalid(filePath, `${path}.prompt`, "expected a string");
+    prompt = value.prompt;
+  }
+  const maxRounds = positiveIntegerField(value, "maxRounds", path, filePath);
+  return {
+    ...(prompt !== undefined ? { prompt } : {}),
+    ...(maxRounds !== undefined ? { maxRounds } : {}),
   };
 }
 
@@ -302,6 +335,7 @@ function parseModel(
     parseVariant(item, variantIndex, `${path}.variants`, filePath),
   );
   const schedule = parseSchedule(value.schedule, `${path}.schedule`, filePath);
+  const autoContinue = booleanField(value, "autoContinue", path, filePath);
   return {
     gatewayId,
     ...(devmateId ? { devmateId } : {}),
@@ -313,6 +347,7 @@ function parseModel(
     ...(limit ? { limit } : {}),
     ...(variants ? { variants } : {}),
     ...(schedule ? { schedule } : {}),
+    ...(autoContinue !== undefined ? { autoContinue } : {}),
   };
 }
 
@@ -351,6 +386,11 @@ function parseValue(value: unknown, filePath: string): RawConfig {
   const gateway = parseProvider(providersValue, "gateway", filePath, true);
   const devmate = parseProvider(providersValue, "devmate", filePath, false);
   const admin = parseProvider(providersValue, "admin", filePath, false);
+  const autoContinue = parseAutoContinue(
+    value.autoContinue,
+    "autoContinue",
+    filePath,
+  );
 
   const cacheValue = value.cache;
   if (cacheValue !== undefined && !isRecord(cacheValue))
@@ -446,6 +486,7 @@ function parseValue(value: unknown, filePath: string): RawConfig {
     },
     cache: { ttl: ttlValue ?? DEFAULT_CACHE_TTL },
     filters,
+    autoContinue,
     models,
   };
 }

@@ -35,6 +35,7 @@ models:
     devmateId: dev-model-a
     api: openai-completions
     tools: true
+    autoContinue: true
     schedule:
       timezone: UTC
       windows: []
@@ -42,6 +43,8 @@ models:
 `,
   );
   const loaded = await loadConfig(path);
+  assert.deepEqual(loaded.config?.autoContinue, {});
+  assert.equal(loaded.config?.models[0].autoContinue, true);
   assert.equal(loaded.config?.cache.ttl, "24h");
   assert.equal(loaded.config?.providers.gateway.id, "zmllmgw");
   assert.equal(loaded.config?.providers.devmate?.id, "zmdevmate");
@@ -218,4 +221,24 @@ models:
     routingFromConfig(loaded.config!)?.models["model-a"].timezone,
     undefined,
   );
+});
+
+test("loadConfig parses auto continuation settings and accepts an empty prompt", async () => {
+  const path = await configFile(
+    "yaml",
+    `
+providers:
+  gateway:
+    endpoint: https://gateway.example
+autoContinue:
+  prompt: ""
+  maxRounds: 4
+models:
+  - gatewayId: model-a
+    autoContinue: true
+`,
+  );
+  const loaded = await loadConfig(path);
+  assert.deepEqual(loaded.config?.autoContinue, { prompt: "", maxRounds: 4 });
+  assert.equal(loaded.config?.models[0].autoContinue, true);
 });

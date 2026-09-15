@@ -27,6 +27,11 @@ export type ConfigModelLimit = {
   output?: number;
 };
 
+export type ConfigAutoContinue = {
+  prompt?: string;
+  maxRounds?: number;
+};
+
 export type RawConfigModel = {
   gatewayId: string;
   devmateId?: string;
@@ -38,6 +43,7 @@ export type RawConfigModel = {
   limit?: ConfigModelLimit;
   variants?: ConfigVariant[];
   schedule?: ConfigSchedule;
+  autoContinue?: boolean;
 };
 
 export type RawConfigProvider = {
@@ -61,6 +67,7 @@ export type RawConfig = {
     include?: string[];
     exclude?: string[];
   };
+  autoContinue: ConfigAutoContinue;
   models: RawConfigModel[];
 };
 
