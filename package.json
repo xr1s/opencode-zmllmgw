@@ -1,0 +1,36 @@
+{
+  "name": "opencode-zmllmgw",
+  "version": "0.0.1",
+  "description": "OpenCode AI SDK provider for the ZMLLMGW model gateway",
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "prepack": "npm run build",
+    "test": "tsx --test test/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opencode/ai": "2.0.3",
+    "@opencode/plugin": "2.0.3",
+    "jsonc-parser": "^3.3.1",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "tsdown": "^0.23.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

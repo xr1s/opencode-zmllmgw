@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["opencode-zmllmgw"],
+  "providers": {
+    "zmllmgw": {
+      "package": "opencode-zmllmgw",
+      "name": "ZMLLMGW"
+    }
+  }
+}
