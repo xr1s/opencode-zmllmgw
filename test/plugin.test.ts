@@ -117,69 +117,47 @@ function testContext(input: {
   const methods: Array<{ integrationID: string; method: { type: string } }> =
     [];
   const commands: Array<{ name: string; execute: () => Promise<void> }> = [];
-  const catalogTransforms: Array<(editor: any) => void> = [];
+  const providerTransforms: Array<(editor: any) => void> = [];
   const integrationTransforms: Array<(editor: any) => void> = [];
-  let catalogReloads = 0;
+  let providerReloads = 0;
 
-  const catalogEditor = {
-    provider: {
-      get: (id: string) => records.get(id),
-      list: () => [...records.values()],
-      update: (id: string, callback: (value: TestProvider) => void) => {
-        let item = records.get(id);
-        if (!item) {
-          item = { provider: { id }, models: new Map() };
-          records.set(id, item);
-        }
-        callback(item.provider);
-      },
-      remove: (id: string) => records.delete(id),
+  const providerEditor = {
+    get: (id: string) => records.get(id),
+    list: () => [...records.values()],
+    add: (input: { info: TestProvider; models: TestModel[] }) => {
+      records.set(input.info.id, {
+        provider: input.info,
+        models: new Map(input.models.map((item) => [item.id, item])),
+      });
     },
-    model: {
-      get: (providerID: string, id: string) =>
-        records.get(providerID)?.models.get(id),
-      update: (
-        providerID: string,
-        id: string,
-        callback: (value: TestModel) => void,
-      ) => {
+    update: (id: string, callback: (value: TestProvider) => void) => {
+      const item = records.get(id);
+      if (!item) throw new Error(`missing provider ${id}`);
+      callback(item.provider);
+    },
+    remove: (id: string) => records.delete(id),
+    models: {
+      set: (providerID: string, models: TestModel[]) => {
         const item = records.get(providerID);
         if (!item) throw new Error(`missing provider ${providerID}`);
-        let current = item.models.get(id);
-        if (!current) {
-          current = model(providerID, id);
-          item.models.set(id, current);
-        }
-        callback(current);
+        item.models = new Map(models.map((value) => [value.id, value]));
       },
-      remove: (providerID: string, id: string) =>
-        records.get(providerID)?.models.delete(id),
-      default: { get: () => undefined, set: () => {} },
     },
   };
 
   const context = {
     options: {},
-    catalog: {
-      provider: {
-        list: async () => ({
-          data: [...records.values()].map((item) => item.provider),
-        }),
-      },
-      model: {
-        list: async () => ({
-          data: [...records.values()].flatMap((item) => [
-            ...item.models.values(),
-          ]),
-        }),
-      },
+    provider: {
+      list: async () => ({
+        data: [...records.values()].map((item) => item.provider),
+      }),
       reload: async () => {
-        catalogReloads += 1;
-        for (const callback of catalogTransforms) callback(catalogEditor);
+        providerReloads += 1;
+        for (const callback of providerTransforms) callback(providerEditor);
       },
       transform: async (callback: (editor: any) => void) => {
-        catalogTransforms.push(callback);
-        callback(catalogEditor);
+        providerTransforms.push(callback);
+        callback(providerEditor);
         return { dispose: async () => {} };
       },
     },
@@ -268,7 +246,7 @@ function testContext(input: {
     integrations,
     methods,
     commands,
-    catalogReloads: () => catalogReloads,
+    providerReloads: () => providerReloads,
   };
 }
 
@@ -495,7 +473,7 @@ models:
   assert.ok(fixture.record.models.has("static-model"));
 });
 
-test("V2 keeps the plugin active with an empty catalog when config is missing", async () => {
+test("V2 keeps the plugin active with an empty provider source when config is missing", async () => {
   const fixture = testContext({
     provider: {
       id: GATEWAY_ID,

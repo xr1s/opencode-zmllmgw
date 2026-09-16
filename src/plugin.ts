@@ -1,7 +1,7 @@
 import { Plugin } from "@opencode/plugin";
 import type { Credential } from "@opencode/plugin";
 import {
-  applyGatewayCatalogSnapshot,
+  applyGatewayProviderSnapshot,
   type CatalogProviderIDs,
 } from "./catalog.js";
 import { createAdminAuthHook } from "./auth-hook.js";
@@ -44,7 +44,7 @@ type DiagnosticCounts = { warnings: number; errors: number };
 
 type RefreshSummary = {
   status: "published" | "preserved";
-  reason: "config" | "discovery" | "catalog" | "runtime";
+  reason: "config" | "discovery" | "provider" | "runtime";
   path?: string;
   models: number;
 };
@@ -249,9 +249,9 @@ export const Zmllmgw = Plugin.define({
       adminBaseURL = adminEndpoint(initialConfigState.value);
     }
 
-    await ctx.catalog.transform((catalog) => {
-      applyGatewayCatalogSnapshot(
-        catalog,
+    await ctx.provider.transform((editor) => {
+      applyGatewayProviderSnapshot(
+        editor,
         {
           baseURL: projectionSnapshot.gateway.baseURL,
           models: projectionSnapshot.gateway.models,
@@ -420,7 +420,7 @@ export const Zmllmgw = Plugin.define({
       const previousProjection = projectionSnapshot;
       projectionSnapshot = snapshot;
       try {
-        await ctx.catalog.reload();
+        await ctx.provider.reload();
         activeSnapshot = snapshot;
         hasPublishedSnapshot = true;
         return {
@@ -434,11 +434,11 @@ export const Zmllmgw = Plugin.define({
         await logger({
           service: "zmllmgw",
           level: "error",
-          message: `catalog reload failed; keeping the previous snapshot: ${error instanceof Error ? error.message : String(error)}`,
+          message: `provider reload failed; keeping the previous snapshot: ${error instanceof Error ? error.message : String(error)}`,
         });
         return {
           status: "preserved",
-          reason: "catalog",
+          reason: "provider",
           path,
           models: modelCount(activeSnapshot),
         };

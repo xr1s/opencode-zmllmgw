@@ -1,4 +1,5 @@
-import type { CatalogEditor } from "@opencode/plugin/promise/catalog";
+import { Integration, Model, Provider } from "@opencode/plugin";
+import type { ProviderEditor } from "@opencode/plugin/promise/provider";
 import type { ConfigModel } from "./model-config.js";
 
 export type CatalogSnapshot = {
@@ -22,55 +23,40 @@ function cloneValue(value: unknown): unknown {
   return value;
 }
 
-function applyModel(
-  target: ReturnType<CatalogEditor["model"]["get"]>,
+function modelInfo(
+  providerID: string,
   modelID: string,
   source: ConfigModel,
-): void {
-  if (!target)
-    throw new Error(`OpenCode catalog could not create model "${modelID}"`);
-
-  // The bootstrap/config-provider may have left an older model overlay here.
-  // The independent snapshot is the only business source, so clear optional
-  // provider/model overlays before applying the canonical model shape.
-  for (const key of [
-    "canonical",
-    "family",
-    "compatibility",
-    "compaction",
-    "websocket",
-    "settings",
-    "headers",
-    "body",
-  ] as const) {
-    delete target[key];
-  }
-
-  target.modelID = modelID as unknown as typeof target.modelID;
-  target.name = source.name;
-  target.capabilities = {
-    tools: source.capabilities.tools,
-    input: [...source.capabilities.input],
-    output: [...source.capabilities.output],
+): Model.Info {
+  const defaults = Model.Info.default(
+    providerID as typeof Provider.ID.Type,
+    modelID as typeof Model.ID.Type,
+  );
+  return {
+    ...defaults,
+    name: source.name,
+    capabilities: {
+      tools: source.capabilities.tools,
+      input: [...source.capabilities.input],
+      output: [...source.capabilities.output],
+    },
+    limit: { ...source.limit },
+    variants:
+      source.variants?.map((variant) => ({
+        id: variant.id as typeof Model.VariantID.Type,
+        settings: cloneValue(variant.settings) as Record<string, unknown>,
+      })) ?? [],
+    time: { released: 0 },
+    cost: [],
+    status: "active",
+    enabled: true,
+    ...(source.package === undefined ? {} : { package: source.package }),
   };
-  target.limit = { ...source.limit };
-  target.variants =
-    source.variants?.map((variant) => ({
-      id: variant.id as unknown as (typeof target.variants)[number]["id"],
-      settings: cloneValue(variant.settings) as Record<string, unknown>,
-    })) ?? [];
-  target.time = { released: 0 };
-  target.cost = [];
-  target.status = "active";
-  target.enabled = true;
-
-  if (source.package === undefined) delete target.package;
-  else target.package = source.package;
 }
 
-/** Project the immutable Gateway snapshot onto the V2 catalog draft. */
-export function applyGatewayCatalogSnapshot(
-  catalog: CatalogEditor,
+/** Publish the Gateway provider source for the V2 provider registry. */
+export function applyGatewayProviderSnapshot(
+  editor: ProviderEditor,
   snapshot: CatalogSnapshot,
   ids: CatalogProviderIDs,
 ): void {
@@ -80,40 +66,32 @@ export function applyGatewayCatalogSnapshot(
     devmate: devmateProviderID,
   } = ids;
 
-  catalog.provider.update(gatewayProviderID, (provider) => {
-    // The user plugin is activated before OpenCode's config-provider plugin.
-    // Establish the fixed provider boundary here instead of depending on that
-    // later transform having run already.
-    provider.package = gatewayPackage;
-    provider.name = "ZMLLMGW";
-    provider.activation = "enabled";
-    provider.integrationID =
-      gatewayProviderID as unknown as typeof provider.integrationID;
-    delete provider.canonical;
-    delete provider.compaction;
-    delete provider.websocket;
-    provider.settings = snapshot.baseURL ? { baseURL: snapshot.baseURL } : {};
-    provider.headers = {};
-    provider.body = {};
-  });
+  const models = Object.entries(snapshot.models).map(([modelID, model]) =>
+    modelInfo(gatewayProviderID, modelID, model),
+  );
+  const providerInfo = {
+    ...Provider.Info.empty(gatewayProviderID as typeof Provider.ID.Type),
+    package: gatewayPackage,
+    name: "ZMLLMGW",
+    activation: "enabled" as const,
+    integrationID:
+      gatewayProviderID as unknown as typeof Integration.ID.Type,
+    settings: snapshot.baseURL ? { baseURL: snapshot.baseURL } : {},
+    headers: {},
+    body: {},
+  };
 
-  const record = catalog.provider.get(gatewayProviderID);
-  if (!record)
-    throw new Error(
-      `OpenCode catalog could not create provider "${gatewayProviderID}"`,
-    );
-
-  for (const modelID of record.models.keys()) {
-    if (!snapshot.models[modelID])
-      catalog.model.remove(gatewayProviderID, modelID);
-  }
-  for (const [modelID, model] of Object.entries(snapshot.models)) {
-    catalog.model.update(gatewayProviderID, modelID, (target) => {
-      applyModel(target, modelID, model);
+  if (editor.get(gatewayProviderID)) {
+    editor.update(gatewayProviderID, (provider) => {
+      delete provider.canonical;
+      delete provider.compaction;
+      Object.assign(provider, providerInfo);
     });
+    editor.models.set(gatewayProviderID, models);
+  } else {
+    editor.add({ info: providerInfo, models });
   }
 
   // DevMate is an internal routing inventory, never a selectable provider.
-  if (catalog.provider.get(devmateProviderID))
-    catalog.provider.remove(devmateProviderID);
+  if (editor.get(devmateProviderID)) editor.remove(devmateProviderID);
 }
