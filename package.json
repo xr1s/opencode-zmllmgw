@@ -1,6 +1,6 @@
 {
   "name": "opencode-zmllmgw",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "OpenCode AI SDK provider for the ZMLLMGW model gateway",
   "type": "module",
   "main": "./dist/index.mjs",

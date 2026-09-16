@@ -26,6 +26,42 @@ type SessionState = {
   lastAssistantID?: string;
 };
 
+type StepData = {
+  sessionID: string;
+  assistantMessageID: string;
+};
+
+function isTransportFailure(error: {
+  type: string;
+  message: string;
+  status?: number;
+}): boolean {
+  const type = error.type.toLowerCase();
+  const message = error.message.toLowerCase();
+  if (
+    type.includes("permission") ||
+    type.includes("auth") ||
+    type.includes("invalid") ||
+    type.includes("parameter")
+  )
+    return false;
+  if (
+    type.includes("transport") ||
+    type.includes("decode") ||
+    type.includes("network")
+  )
+    return true;
+  return (
+    error.status === undefined || error.status >= 500
+  ) && /socket|connection (?:was )?(?:closed|reset|aborted)|econn(?:reset|refused)|timed? out|network error|stream.*closed|decode error/.test(
+    message,
+  );
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 function modelAutoContinueEnabled(
   config: ResolvedConfig | undefined,
   modelID: string | undefined,
@@ -91,9 +127,14 @@ class AutoContinueCoordinator {
   private async consume(ctx: Plugin.Context, signal: AbortSignal): Promise<void> {
     try {
       for await (const event of ctx.event.subscribe({ signal })) {
-        if (event.type !== "session.step.ended") continue;
-        if (event.data.finish !== "length") continue;
-        await this.handleStep(ctx, event.data);
+        if (event.type === "session.step.ended") {
+          if (event.data.finish !== "length") continue;
+          await this.handleStep(ctx, event.data, 0);
+          continue;
+        }
+        if (event.type !== "session.step.failed") continue;
+        if (!isTransportFailure(event.data.error)) continue;
+        await this.handleStep(ctx, event.data, 1_000);
       }
     } catch (error) {
       if (!signal.aborted)
@@ -105,11 +146,8 @@ class AutoContinueCoordinator {
 
   private async handleStep(
     ctx: Plugin.Context,
-    data: {
-      sessionID: string;
-      assistantMessageID: string;
-      finish: string;
-    },
+    data: StepData,
+    delayMilliseconds: number,
   ): Promise<void> {
     const messages = await ctx.session.context({ sessionID: data.sessionID });
     const message = messages.find(
@@ -156,6 +194,10 @@ class AutoContinueCoordinator {
     state.lastAssistantID = data.assistantMessageID;
     this.states.set(data.sessionID, state);
     try {
+      if (delayMilliseconds > 0) {
+        await wait(delayMilliseconds);
+        if (this.states.get(data.sessionID) !== state) return;
+      }
       await source.ctx.session.prompt({
         sessionID: data.sessionID,
         text:

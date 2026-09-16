@@ -242,3 +242,38 @@ models:
   assert.deepEqual(loaded.config?.autoContinue, { prompt: "", maxRounds: 4 });
   assert.equal(loaded.config?.models[0].autoContinue, true);
 });
+
+test("auto continuation follows both configured backend routes", async () => {
+  const path = await configFile(
+    "yaml",
+    `
+providers:
+  gateway:
+    endpoint: https://gateway.example
+  devmate:
+    endpoint: https://devmate.example
+models:
+  - gatewayId: model-a
+    devmateId: dev-model-a
+    autoContinue: true
+    schedule:
+      windows:
+        - start: "09:00"
+          end: "18:00"
+      within: devmate
+      beyond: gateway
+`,
+  );
+  const loaded = await loadConfig(path);
+  assert.equal(loaded.config?.models[0].autoContinue, true);
+  assert.deepEqual(routingFromConfig(loaded.config!), {
+    devmateBaseURL: "https://devmate.example/v1",
+    models: {
+      "model-a": {
+        windows: [{ start: "09:00", end: "18:00" }],
+        within: { provider: "devmate", model: "dev-model-a" },
+        beyond: { provider: "gateway", model: "model-a" },
+      },
+    },
+  });
+});
