@@ -45,11 +45,12 @@ shape, with `context` (input context window) and `output` (max output tokens);
 `input` is also accepted and passed through when provided.
 
 When `autoContinue: true` is set on a model, text-only responses that finish
-with `length` are continued automatically as visible user prompts, regardless
-of which configured backend route handles the request. The root `autoContinue`
-block is optional; its default prompt and `maxRounds` of 16 are used when
-omitted. The feature does not alter the model's output-token limit, does not
-recover truncated tool calls, and does not pin retries to a backend route.
+with `length`, or fail because an incomplete stream has no `finish_reason`, are
+continued automatically as visible user prompts, regardless of which
+configured backend route handles the request. The root `autoContinue` block is
+optional; its default prompt and `maxRounds` of 16 are used when omitted. The
+feature does not alter the model's output-token limit, does not recover
+truncated tool calls, and does not pin retries to a backend route.
 
 Add `opencode-zmllmgw` to the OpenCode plugin list, then use
 `/reload-zmllmgw` after changing the configuration.

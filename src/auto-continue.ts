@@ -31,13 +31,24 @@ type StepData = {
   assistantMessageID: string;
 };
 
-function isTransportFailure(error: {
-  type: string;
-  message: string;
+type StepFailure = {
+  type?: string;
+  message?: string;
   status?: number;
-}): boolean {
-  const type = error.type.toLowerCase();
-  const message = error.message.toLowerCase();
+  classification?: string;
+};
+
+export function isRetryableStreamFailure(error: StepFailure): boolean {
+  const type = error.type?.toLowerCase() ?? "";
+  const message = error.message?.toLowerCase() ?? "";
+  const classification = error.classification?.toLowerCase() ?? "";
+
+  if (
+    classification === "incomplete-stream" ||
+    /stream ended without (?:a )?finish[_ -]?reason/.test(message)
+  )
+    return true;
+
   if (
     type.includes("permission") ||
     type.includes("auth") ||
@@ -133,7 +144,7 @@ class AutoContinueCoordinator {
           continue;
         }
         if (event.type !== "session.step.failed") continue;
-        if (!isTransportFailure(event.data.error)) continue;
+        if (!isRetryableStreamFailure(event.data.error)) continue;
         await this.handleStep(ctx, event.data, 1_000);
       }
     } catch (error) {
